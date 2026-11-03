@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Southwest Airlines Interactive Route Map</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom Leaflet Dark/Clean adjustments */
+        .leaflet-popup-content-wrapper {
+            border-radius: 0.75rem;
+            padding: 0.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        .leaflet-popup-content {
+            margin: 0.75rem 1rem;
+        }
+        /* Custom scrollbar for sleek sidebar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col bg-slate-50 text-slate-800 overflow-hidden">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white shadow-md z-30 flex-none px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-amber-400 text-blue-950 p-2 rounded-xl font-bold flex items-center justify-center shadow-inner">
+                <i class="fa-solid fa-plane-departure text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-lg md:text-xl font-bold tracking-tight">Southwest Airlines Route Explorer</h1>
+                <p class="text-xs text-blue-200 hidden sm:block">Interactive Individual Destination Map (No Clustering)</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <!-- Mobile Sidebar Toggle -->
+            <button id="sidebar-toggle" class="md:hidden bg-blue-700 hover:bg-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-1">
+                <i class="fa-solid fa-bars"></i>
+                <span>Destinations</span>
+            </button>
+            <div class="bg-blue-800/80 border border-blue-700 px-3 py-1.5 rounded-full text-xs font-semibold text-blue-100 hidden sm:flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="destination-count">0 Destinations Mapped</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <div class="flex-1 flex relative overflow-hidden">
+
+        <!-- Sidebar Panel (List & Filters) -->
+        <aside id="sidebar" class="absolute inset-y-0 left-0 z-20 w-80 md:w-96 bg-white border-r border-slate-200 flex flex-col shadow-xl transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
+            
+            <!-- Sidebar Header & Search -->
+            <div class="p-4 border-b border-slate-100 bg-slate-50/50">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="font-bold text-slate-800 text-sm uppercase tracking-wider">Destinations Directory</h2>
+                    <button id="sidebar-close" class="md:hidden text-slate-400 hover:text-slate-600 p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+                
+                <!-- Search Input -->
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-search text-sm"></i>
+                    </span>
+                    <input type="text" id="search-input" placeholder="Search city, airport, or IATA code..." 
+                        class="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition shadow-sm">
+                    <button id="clear-search" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 hidden">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                    </button>
+                </div>
+
+                <!-- Region Filter Pills -->
+                <div class="flex items-center space-x-1.5 mt-3 overflow-x-auto pb-1 text-xs">
+                    <button class="region-filter px-3 py-1 rounded-full bg-blue-600 text-white font-medium whitespace-nowrap shadow-sm transition" data-region="all">All</button>
+                    <button class="region-filter px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium whitespace-nowrap transition" data-region="USA">United States</button>
+                    <button class="region-filter px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium whitespace-nowrap transition" data-region="Mexico">Mexico</button>
+                    <button class="region-filter px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium whitespace-nowrap transition" data-region="Caribbean">Caribbean</button>
+                    <button class="region-filter px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium whitespace-nowrap transition" data-region="Central America">Central America</button>
+                </div>
+            </div>
+
+            <!-- Airport List Scroll Container -->
+            <div id="airport-list" class="flex-1 overflow-y-auto divide-y divide-slate-100">
+                <!-- Populated dynamically via JavaScript -->
+            </div>
+
+            <!-- Sidebar Footer Stats -->
+            <div class="p-3 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-500">
+                Showing <span id="visible-count">0</span> of <span id="total-count">0</span> Southwest destinations
+            </div>
+        </aside>
+
+        <!-- Backdrop for Mobile Sidebar -->
+        <div id="sidebar-backdrop" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-10 hidden md:hidden"></div>
+
+        <!-- Map View Container -->
+        <main class="flex-1 h-full relative">
+            <div id="map" class="w-full h-full z-0"></div>
+            
+            <!-- Floating Map Legend / Info Overlay -->
+            <div class="absolute bottom-6 right-6 z-10 bg-white/90 backdrop-blur-md border border-slate-200 p-3 rounded-xl shadow-lg text-xs space-y-2 max-w-xs hidden sm:block">
+                <div class="font-semibold text-slate-700 border-b border-slate-100 pb-1 flex items-center justify-between">
+                    <span>Map Legend</span>
+                    <i class="fa-solid fa-circle-info text-blue-600"></i>
+                </div>
+                <div class="flex items-center space-x-2 text-slate-600">
+                    <span class="w-3.5 h-3.5 rounded-full bg-blue-600 inline-block ring-2 ring-blue-100"></span>
+                    <span>Southwest Destination Airport</span>
+                </div>
+                <p class="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                    Click any marker or list item to view exact airport details and center view. No clustering enabled.
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // Comprehensive Southwest Airlines Destinations Database
+        const destinations = [
+            // United States
+            { code: "ABQ", name: "Albuquerque International Sunport", city: "Albuquerque", state: "NM", country: "United States", region: "USA", lat: 35.0402, lng: -106.6091 },
+            { code: "ALB", name: "Albany International Airport", city: "Albany", state: "NY", country: "United States", region: "USA", lat: 42.7483, lng: -73.8017 },
+            { code: "AMA", name: "Rick Husband Amarillo International Airport", city: "Amarillo", state: "TX", country: "United States", region: "USA", lat: 35.2194, lng: -101.7059 },
+            { code: "ANC", name: "Ted Stevens Anchorage International Airport", city: "Anchorage", state: "AK", country: "United States", region: "USA", lat: 61.1743, lng: -149.9963 },
+            { code: "ATL", name: "Hartsfield-Jackson Atlanta International Airport", city: "Atlanta", state: "GA", country: "United States", region: "USA", lat: 33.6407, lng: -84.4277 },
+            { code: "AUS", name: "Austin-Bergstrom International Airport", city: "Austin", state: "TX", country: "United States", region: "USA", lat: 30.1975, lng: -97.6664 },
+            { code: "BDL", name: "Bradley International Airport", city: "Windsor Locks", state: "CT", country: "United States", region: "USA", lat: 41.9389, lng: -72.6832 },
+            { code: "BHM", name: "Birmingham-Shuttlesworth International Airport", city: "Birmingham", state: "AL", country: "United States", region: "USA", lat: 33.5629, lng: -86.7535 },
+            { code: "BNA", name: "Nashville International Airport", city: "Nashville", state: "TN", country: "United States", region: "USA", lat: 36.1245, lng: -86.6782 },
+            { code: "BOI", name: "Boise Airport", city: "Boise", state: "ID", country: "United States", region: "USA", lat: 43.5644, lng: -116.2228 },
+            { code: "BOS", name: "Logan International Airport", city: "Boston", state: "MA", country: "United States", region: "USA", lat: 42.3656, lng: -71.0096 },
+            { code: "BUF", name: "Buffalo Niagara International Airport", city: "Buffalo", state: "NY", country: "United States", region: "USA", lat: 42.9405, lng: -78.7322 },
+            { code: "BUR", name: "Hollywood Burbank Airport", city: "Burbank", state: "CA", country: "United States", region: "USA", lat: 34.2007, lng: -118.3587 },
+            { code: "BWI", name: "Baltimore/Washington International Thurgood Marshall Airport", city: "Baltimore", state: "MD", country: "United States", region: "USA", lat: 39.1754, lng: -76.6683 },
+            { code: "BZN", name: "Bozeman Yellowstone International Airport", city: "Bozeman", state: "MT", country: "United States", region: "USA", lat: 45.7766, lng: -111.1530 },
+            { code: "CAE", name: "Columbia Metropolitan Airport", city: "Columbia", state: "SC", country: "United States", region: "USA", lat: 33.9388, lng: -81.1195 },
+            { code: "CHS", name: "Charleston International Airport", city: "Charleston", state: "SC", country: "United States", region: "USA", lat: 32.8986, lng: -80.0405 },
+            { code: "CLE", name: "Cleveland Hopkins International Airport", city: "Cleveland", state: "OH", country: "United States", region: "USA", lat: 41.4108, lng: -81.8494 },
+            { code: "CLT", name: "Charlotte Douglas International Airport", city: "Charlotte", state: "NC", country: "United States", region: "USA", lat: 35.2140, lng: -80.9431 },
+            { code: "CMH", name: "John Glenn Columbus International Airport", city: "Columbus", state: "OH", country: "United States", region: "USA", lat: 39.9980, lng: -82.8919 },
+            { code: "CRP", name: "Corpus Christi International Airport", city: "Corpus Christi", state: "TX", country: "United States", region: "USA", lat: 27.7704, lng: -97.5012 },
+            { code: "CVG", name: "Cincinnati/Northern Kentucky International Airport", city: "Cincinnati", state: "KY", country: "United States", region: "USA", lat: 39.0531, lng: -84.6630 },
+            { code: "DAL", name: "Dallas Love Field", city: "Dallas", state: "TX", country: "United States", region: "USA", lat: 32.8471, lng: -96.8518 },
+            { code: "DAY", name: "Dayton International Airport", city: "Dayton", state: "OH", country: "United States", region: "USA", lat: 39.9023, lng: -84.2193 },
+            { code: "DCA", name: "Ronald Reagan Washington National Airport", city: "Arlington", state: "VA", country: "United States", region: "USA", lat: 38.8512, lng: -77.0402 },
+            { code: "DEN", name: "Denver International Airport", city: "Denver", state: "CO", country: "United States", region: "USA", lat: 39.8561, lng: -104.6737 },
+            { code: "DSM", name: "Des Moines International Airport", city: "Des Moines", state: "IA", country: "United States", region: "USA", lat: 41.5340, lng: -93.6531 },
+            { code: "DTW", name: "Detroit Metropolitan Wayne County Airport", city: "Detroit", state: "MI", country: "United States", region: "USA", lat: 42.2124, lng: -83.3534 },
+            { code: "ECP", name: "Northwest Florida Beaches International Airport", city: "Panama City", state: "FL", country: "United States", region: "USA", lat: 30.3580, lng: -85.7984 },
+            { code: "ELP", name: "El Paso International Airport", city: "El Paso", state: "TX", country: "United States", region: "USA", lat: 31.8073, lng: -106.3776 },
+            { code: "EWR", name: "Newark Liberty International Airport", city: "Newark", state: "NJ", country: "United States", region: "USA", lat: 40.6895, lng: -74.1745 },
+            { code: "FLL", name: "Fort Lauderdale-Hollywood International Airport", city: "Fort Lauderdale", state: "FL", country: "United States", region: "USA", lat: 26.0726, lng: -80.1527 },
+            { code: "GEG", name: "Spokane International Airport", city: "Spokane", state: "WA", country: "United States", region: "USA", lat: 47.6199, lng: -117.5339 },
+            { code: "GSP", name: "Greenville-Spartanburg International Airport", city: "Greer", state: "SC", country: "United States", region: "USA", lat: 34.8957, lng: -82.2189 },
+            { code: "HNL", name: "Daniel K. Inouye International Airport", city: "Honolulu", state: "HI", country: "United States", region: "USA", lat: 21.3187, lng: -157.9225 },
+            { code: "HOU", name: "William P. Hobby Airport", city: "Houston", state: "TX", country: "United States", region: "USA", lat: 29.6454, lng: -95.2789 },
+            { code: "IAD", name: "Washington Dulles International Airport", city: "Dulles", state: "VA", country: "United States", region: "USA", lat: 38.9445, lng: -77.4558 },
+            { code: "IAH", name: "George Bush Intercontinental Airport", city: "Houston", state: "TX", country: "United States", region: "USA", lat: 29.9902, lng: -95.3368 },
+            { code: "IND", name: "Indianapolis International Airport", city: "Indianapolis", state: "IN", country: "United States", region: "USA", lat: 39.7173, lng: -86.2944 },
+            { code: "ISP", name: "Long Island MacArthur Airport", city: "Islip", state: "NY", country: "United States", region: "USA", lat: 40.7963, lng: -73.1030 },
+            { code: "ITO", name: "Hilo International Airport", city: "Hilo", state: "HI", country: "United States", region: "USA", lat: 19.7214, lng: -155.0484 },
+            { code: "JAN", name: "Jackson-Medgar Wiley Evers International Airport", city: "Jackson", state: "MS", country: "United States", region: "USA", lat: 32.3112, lng: -90.0759 },
+            { code: "JAX", name: "Jacksonville International Airport", city: "Jacksonville", state: "FL", country: "United States", region: "USA", lat: 30.4941, lng: -81.6879 },
+            { code: "KOA", name: "Ellison Onizuka Kona International Airport", city: "Kailua-Kona", state: "HI", country: "United States", region: "USA", lat: 19.7388, lng: -156.0456 },
+            { code: "LAS", name: "Harry Reid International Airport", city: "Las Vegas", state: "NV", country: "United States", region: "USA", lat: 36.0840, lng: -115.1537 },
+            { code: "LAX", name: "Los Angeles International Airport", city: "Los Angeles", state: "CA", country: "United States", region: "USA", lat: 33.9416, lng: -118.4085 },
+            { code: "LIH", name: "Lihue Airport", city: "Lihue", state: "HI", country: "United States", region: "USA", lat: 21.9760, lng: -159.3389 },
+            { code: "LIT", name: "Bill and Hillary Clinton National Airport", city: "Little Rock", state: "AR", country: "United States", region: "USA", lat: 34.7294, lng: -92.2243 },
+            { code: "MCI", name: "Kansas City International Airport", city: "Kansas City", state: "MO", country: "United States", region: "USA", lat: 39.2976, lng: -94.7139 },
+            { code: "MCO", name: "Orlando International Airport", city: "Orlando", state: "FL", country: "United States", region: "USA", lat: 28.4294, lng: -81.3089 },
+            { code: "MDW", name: "Chicago Midway International Airport", city: "Chicago", state: "IL", country: "United States", region: "USA", lat: 41.7868, lng: -87.7522 },
+            { code: "MEM", name: "Memphis International Airport", city: "Memphis", state: "TN", country: "United States", region: "USA", lat: 35.0424, lng: -89.9767 },
+            { code: "MHT", name: "Manchester-Boston Regional Airport", city: "Manchester", state: "NH", country: "United States", region: "USA", lat: 42.9326, lng: -71.4357 },
+            { code: "MIA", name: "Miami International Airport", city: "Miami", state: "FL", country: "United States", region: "USA", lat: 25.7959, lng: -80.2870 },
+            { code: "MKE", name: "General Mitchell International Airport", city: "Milwaukee", state: "WI", country: "United States", region: "USA", lat: 42.9472, lng: -87.9000 },
+            { code: "MSP", name: "Minneapolis-Saint Paul International Airport", city: "Minneapolis", state: "MN", country: "United States", region: "USA", lat: 44.8848, lng: -93.2223 },
+            { code: "MSY", name: "Louis Armstrong New Orleans International Airport", city: "New Orleans", state: "LA", country: "United States", region: "USA", lat: 29.9934, lng: -90.2580 },
+            { code: "OAK", name: "Oakland International Airport", city: "Oakland", state: "CA", country: "United States", region: "USA", lat: 37.7213, lng: -122.2207 },
+            { code: "OGG", name: "Kahului Airport", city: "Kahului", state: "HI", country: "United States", region: "USA", lat: 20.8987, lng: -156.4305 },
+            { code: "OKC", name: "Will Rogers World Airport", city: "Oklahoma City", state: "OK", country: "United States", region: "USA", lat: 35.3931, lng: -97.6007 },
+            { code: "OMA", name: "Eppley Airfield", city: "Omaha", state: "NE", country: "United States", region: "USA", lat: 41.3032, lng: -95.8941 },
+            { code: "ONT", name: "Ontario International Airport", city: "Ontario", state: "CA", country: "United States", region: "USA", lat: 34.0560, lng: -117.6012 },
+            { code: "ORF", name: "Norfolk International Airport", city: "Norfolk", state: "VA", country: "United States", region: "USA", lat: 36.8946, lng: -76.2012 },
+            { code: "PBI", name: "Palm Beach International Airport", city: "West Palm Beach", state: "FL", country: "United States", region: "USA", lat: 26.6832, lng: -80.0956 },
+            { code: "PDX", name: "Portland International Airport", city: "Portland", state: "OR", country: "United States", region: "USA", lat: 45.5898, lng: -122.5951 },
+            { code: "PHL", name: "Philadelphia International Airport", city: "Philadelphia", state: "PA", country: "United States", region: "USA", lat: 39.8722, lng: -75.2411 },
+            { code: "PHX", name: "Phoenix Sky Harbor International Airport", city: "Phoenix", state: "AZ", country: "United States", region: "USA", lat: 33.4343, lng: -112.0116 },
+            { code: "PIT", name: "Pittsburgh International Airport", city: "Pittsburgh", state: "PA", country: "United States", region: "USA", lat: 40.4915, lng: -80.2329 },
+            { code: "PNS", name: "Pensacola International Airport", city: "Pensacola", state: "FL", country: "United States", region: "USA", lat: 30.4734, lng: -87.1866 },
+            { code: "PVD", name: "Rhode Island T. F. Green International Airport", city: "Providence", state: "RI", country: "United States", region: "USA", lat: 41.7240, lng: -71.4282 },
+            { code: "PWM", name: "Portland International Jetport", city: "Portland", state: "ME", country: "United States", region: "USA", lat: 43.6462, lng: -70.3094 },
+            { code: "RDU", name: "Raleigh-Durham International Airport", city: "Raleigh", state: "NC", country: "United States", region: "USA", lat: 35.8776, lng: -78.7875 },
+            { code: "RIC", name: "Richmond International Airport", city: "Richmond", state: "VA", country: "United States", region: "USA", lat: 37.5052, lng: -77.3197 },
+            { code: "RNO", name: "Reno-Tahoe International Airport", city: "Reno", state: "NV", country: "United States", region: "USA", lat: 39.4991, lng: -119.7681 },
+            { code: "ROC", name: "Greater Rochester International Airport", city: "Rochester", state: "NY", country: "United States", region: "USA", lat: 43.1188, lng: -77.6724 },
+            { code: "RSW", name: "Southwest Florida International Airport", city: "Fort Myers", state: "FL", country: "United States", region: "USA", lat: 26.5362, lng: -81.7554 },
+            { code: "SAN", name: "San Diego International Airport", city: "San Diego", state: "CA", country: "United States", region: "USA", lat: 32.7338, lng: -117.1933 },
+            { code: "SAT", name: "San Antonio International Airport", city: "San Antonio", state: "TX", country: "United States", region: "USA", lat: 29.5337, lng: -98.4698 },
+            { code: "SAV", name: "Savannah/Hilton Head International Airport", city: "Savannah", state: "GA", country: "United States", region: "USA", lat: 32.1276, lng: -81.2021 },
+            { code: "SDF", name: "Louisville Muhammad Ali International Airport", city: "Louisville", state: "KY", country: "United States", region: "USA", lat: 38.1744, lng: -85.7360 },
+            { code: "SEA", name: "Seattle-Tacoma International Airport", city: "Seattle", state: "WA", country: "United States", region: "USA", lat: 47.4502, lng: -122.3088 },
+            { code: "SFO", name: "San Francisco International Airport", city: "San Francisco", state: "CA", country: "United States", region: "USA", lat: 37.6213, lng: -122.3790 },
+            { code: "SJC", name: "Norman Y. Mineta San Jose International Airport", city: "San Jose", state: "CA", country: "United States", region: "USA", lat: 37.3639, lng: -121.9289 },
+            { code: "SJU", name: "Luis Muñoz Marín International Airport", city: "San Juan", state: "PR", country: "United States", region: "USA", lat: 18.4394, lng: -66.0018 },
+            { code: "SLC", name: "Salt Lake City International Airport", city: "Salt Lake City", state: "UT", country: "United States", region: "USA", lat: 40.7899, lng: -111.9791 },
+            { code: "SMF", name: "Sacramento International Airport", city: "Sacramento", state: "CA", country: "United States", region: "USA", lat: 38.6954, lng: -121.5908 },
+            { code: "SNA", name: "John Wayne Airport", city: "Santa Ana", state: "CA", country: "United States", region: "USA", lat: 33.6757, lng: -117.8674 },
+            { code: "STL", name: "St. Louis Lambert International Airport", city: "St. Louis", state: "MO", country: "United States", region: "USA", lat: 38.7487, lng: -90.3700 },
+            { code: "SYR", name: "Syracuse Hancock International Airport", city: "Syracuse", state: "NY", country: "United States", region: "USA", lat: 43.1112, lng: -76.1063 },
+            { code: "TLH", name: "Tallahassee International Airport", city: "Tallahassee", state: "FL", country: "United States", region: "USA", lat: 30.3965, lng: -84.3503 },
+            { code: "TPA", name: "Tampa International Airport", city: "Tampa", state: "FL", country: "United States", region: "USA", lat: 27.9755, lng: -82.5332 },
+            { code: "TUL", name: "Tulsa International Airport", city: "Tulsa", state: "OK", country: "United States", region: "USA", lat: 36.1984, lng: -95.8881 },
+            { code: "TUS", name: "Tucson International Airport", city: "Tucson", state: "AZ", country: "United States", region: "USA", lat: 32.1161, lng: -110.9410 },
+            { code: "TYS", name: "McGhee Tyson Airport", city: "Knoxville", state: "TN", country: "United States", region: "USA", lat: 35.8110, lng: -83.9940 },
+
+            // Mexico
+            { code: "CJS", name: "Abraham González International Airport", city: "Ciudad Juárez", state: "CH", country: "Mexico", region: "Mexico", lat: 31.6322, lng: -106.4311 },
+            { code: "CUN", name: "Cancún International Airport", city: "Cancún", state: "QR", country: "Mexico", region: "Mexico", lat: 21.0365, lng: -86.8771 },
+            { code: "GDL", name: "Guadalajara International Airport", city: "Guadalajara", state: "JA", country: "Mexico", region: "Mexico", lat: 20.5218, lng: -103.3112 },
+            { code: "MEX", name: "Mexico City International Airport", city: "Mexico City", state: "CMX", country: "Mexico", region: "Mexico", lat: 19.4363, lng: -99.0721 },
+            { code: "MTY", name: "Monterrey International Airport", city: "Monterrey", state: "NL", country: "Mexico", region: "Mexico", lat: 25.7785, lng: -100.1069 },
+            { code: "PVR", name: "Licenciado Gustavo Díaz Ordaz International Airport", city: "Puerto Vallarta", state: "JA", country: "Mexico", region: "Mexico", lat: 20.6784, lng: -105.2510 },
+            { code: "SJD", name: "Los Cabos International Airport", city: "San José del Cabo", state: "BCS", country: "Mexico", region: "Mexico", lat: 23.1518, lng: -109.7211 },
+
+            // Caribbean
+            { code: "AUA", name: "Queen Beatrix International Airport", city: "Oranjestad", state: "Aruba", country: "Aruba", region: "Caribbean", lat: 12.5014, lng: -70.0152 },
+            { code: "MBJ", name: "Sangster International Airport", city: "Montego Bay", state: "Jamaica", country: "Jamaica", region: "Caribbean", lat: 18.5037, lng: -77.9131 },
+            { code: "NAS", name: "Lynden Pindling International Airport", city: "Nassau", state: "Bahamas", country: "Bahamas", region: "Caribbean", lat: 25.0389, lng: -77.4662 },
+            { code: "PUJ", name: "Punta Cana International Airport", city: "Punta Cana", state: "Dominican Republic", country: "Dominican Republic", region: "Caribbean", lat: 18.5674, lng: -68.3634 },
+
+            // Central America
+            { code: "BZE", name: "Philip S.W. Goldson International Airport", city: "Belize City", state: "Belize", country: "Belize", region: "Central America", lat: 17.5408, lng: -88.3087 },
+            { code: "GUA", name: "La Aurora International Airport", city: "Guatemala City", state: "Guatemala", country: "Central America", lat: 14.5833, lng: -90.5275 },
+            { code: "LIR", name: "Daniel Oduber Quirós International Airport", city: "Liberia", state: "Costa Rica", country: "Central America", lat: 10.5933, lng: -85.5444 },
+            { code: "SAL", name: "El Salvador International Airport", city: "San Salvador", state: "El Salvador", country: "Central America", lat: 13.4409, lng: -89.0556 },
+            { code: "SJO", name: "Juan Santamaría International Airport", city: "San José", state: "Costa Rica", country: "Central America", lat: 9.9939, lng: -84.2088 }
+        ];
+
+        // Sort alphabetically by city name
+        destinations.sort((a, b) => a.city.localeCompare(b.city));
+
+        // State variables
+        let map;
+        let markersMap = {}; // Map IATA code -> Leaflet marker
+        let currentRegion = "all";
+        let searchQuery = "";
+
+        // Initialize Map on window load
+        window.onload = function() {
+            initMap();
+            renderDestinations(destinations);
+            setupEventListeners();
+        };
+
+        function initMap() {
+            // Create Leaflet map centered over North America
+            map = L.map('map', {
+                zoomControl: false,
+                worldCopyJump: true
+            }).setView([37.0902, -95.7129], 4);
+
+            // Add custom zoom control to top-right
+            L.control.zoom({
+                position: 'topright'
+            }).addTo(map);
+
+            // Esri World Street Map - Completely free, high reliability, no API keys or 403 blocks in iFrames
+            const esriStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+            }).addTo(map);
+
+            // Esri World Topo Map (Alternative clean terrain look)
+            const esriTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), swisstopo, MapmyIndia, &#169; OpenStreetMap contributors, and the GIS User Community'
+            });
+
+            // Esri World Imagery (Satellite)
+            const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 18,
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            });
+
+            L.control.layers({
+                "Street Map (Default)": esriStreet,
+                "Topographic": esriTopo,
+                "Satellite Imagery": esriSat
+            }, null, { position: 'bottomleft' }).addTo(map);
+
+            // Plot all individual markers (No Clustering)
+            destinations.forEach(dest => {
+                const markerIcon = L.divIcon({
+                    className: 'custom-airport-marker',
+                    html: `
+                        <div style="background-color: #1d4ed8; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); transition: transform 0.2s;" class="hover:scale-125 cursor-pointer"></div>
+                    `,
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7]
+                });
+
+                const marker = L.marker([dest.lat, dest.lng], { icon: markerIcon });
+
+                const popupContent = `
+                    <div style="font-family: 'Inter', sans-serif; min-width: 200px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="background: #eff6ff; color: #1e40af; font-weight: 700; font-size: 13px; padding: 2px 8px; border-radius: 6px; border: 1px solid #bfdbfe;">${dest.code}</span>
+                            <span style="font-size: 11px; color: #64748b; font-weight: 500;">${dest.region}</span>
+                        </div>
+                        <h3 style="font-weight: 700; font-size: 14px; color: #0f172a; margin: 0 0 2px 0;">${dest.city}${dest.state ? ', ' + dest.state : ''}</h3>
+                        <p style="font-size: 12px; color: #475569; margin: 0 0 8px 0; line-height: 1.3;">${dest.name}</p>
+                        <div style="font-size: 11px; color: #94a3b8; border-top: 1px solid #f1f5f9; pt-2; display: flex; justify-content: space-between; align-items: center;">
+                            <span>Country: ${dest.country}</span>
+                            <button onclick="flyToAirport('${dest.code}')" style="color: #2563eb; background: none; border: none; cursor: pointer; font-weight: 600;">Focus</button>
+                        </div>
+                    </div>
+                `;
+
+                marker.bindPopup(popupContent);
+                
+                // Hover tooltip showing code & city
+                marker.bindTooltip(`<b>${dest.code}</b> - ${dest.city}`, {
+                    direction: 'top',
+                    offset: [0, -8],
+                    opacity: 0.9
+                });
+
+                marker.addTo(map);
+                markersMap[dest.code] = { marker, dest };
+            });
+
+            updateCounts(destinations.length, destinations.length);
+        }
+
+        // Render Sidebar List
+        function renderDestinations(list) {
+            const container = document.getElementById('airport-list');
+            container.innerHTML = "";
+
+            if (list.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-slate-400">
+                        <i class="fa-solid fa-plane-slash text-3xl mb-2"></i>
+                        <p class="text-sm font-medium">No destinations found matching your criteria.</p>
+                    </div>
+                `;
+                updateCounts(0, destinations.length);
+                return;
+            }
+
+            list.forEach(dest => {
+                const item = document.createElement('div');
+                item.className = "p-3 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between border-b border-slate-50 group";
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs group-hover:bg-blue-600 group-hover:text-white transition shadow-sm">
+                            ${dest.code}
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-800 group-hover:text-blue-600 transition">${dest.city}${dest.state ? ', ' + dest.state : ''}</h4>
+                            <p class="text-xs text-slate-500 truncate max-w-[180px] md:max-w-[210px]">${dest.name}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="inline-block px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600 rounded-full">${dest.region}</span>
+                    </div>
+                `;
+
+                item.addEventListener('click', () => {
+                    flyToAirport(dest.code);
+                    // On mobile, automatically close sidebar after selection
+                    if (window.innerWidth < 768) {
+                        toggleSidebar(false);
+                    }
+                });
+
+                container.appendChild(item);
+            });
+
+            updateCounts(list.length, destinations.length);
+        }
+
+        function flyToAirport(code) {
+            const entry = markersMap[code];
+            if (entry) {
+                map.flyTo([entry.dest.lat, entry.dest.lng], 8, {
+                    duration: 1.2
+                });
+                entry.marker.openPopup();
+            }
+        }
+
+        function updateCounts(visible, total) {
+            document.getElementById('destination-count').innerText = `${total} Destinations Mapped`;
+            document.getElementById('visible-count').innerText = visible;
+            document.getElementById('total-count').innerText = total;
+        }
+
+        // Filtering logic
+        function filterAndRender() {
+            const filtered = destinations.filter(dest => {
+                const matchesRegion = currentRegion === 'all' || dest.region === currentRegion;
+                const query = searchQuery.toLowerCase();
+                const matchesSearch = 
+                    dest.code.toLowerCase().includes(query) ||
+                    dest.city.toLowerCase().includes(query) ||
+                    dest.name.toLowerCase().includes(query) ||
+                    dest.country.toLowerCase().includes(query) ||
+                    (dest.state && dest.state.toLowerCase().includes(query));
+
+                return matchesRegion && matchesSearch;
+            });
+
+            renderDestinations(filtered);
+
+            // Update markers visibility on map
+            Object.values(markersMap).forEach(({ marker, dest }) => {
+                const matchesRegion = currentRegion === 'all' || dest.region === currentRegion;
+                const query = searchQuery.toLowerCase();
+                const matchesSearch = 
+                    dest.code.toLowerCase().includes(query) ||
+                    dest.city.toLowerCase().includes(query) ||
+                    dest.name.toLowerCase().includes(query) ||
+                    dest.country.toLowerCase().includes(query) ||
+                    (dest.state && dest.state.toLowerCase().includes(query));
+
+                if (matchesRegion && matchesSearch) {
+                    if (!map.hasLayer(marker)) {
+                        marker.addTo(map);
+                    }
+                } else {
+                    if (map.hasLayer(marker)) {
+                        marker.remove();
+                    }
+                }
+            });
+        }
+
+        // Setup Event Listeners
+        function setupEventListeners() {
+            const searchInput = document.getElementById('search-input');
+            const clearSearchBtn = document.getElementById('clear-search');
+
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value.trim();
+                if (searchQuery.length > 0) {
+                    clearSearchBtn.classList.remove('hidden');
+                } else {
+                    clearSearchBtn.classList.add('hidden');
+                }
+                filterAndRender();
+            });
+
+            clearSearchBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                searchQuery = '';
+                clearSearchBtn.classList.add('hidden');
+                filterAndRender();
+                searchInput.focus();
+            });
+
+            // Region filter buttons
+            const regionButtons = document.querySelectorAll('.region-filter');
+            regionButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    regionButtons.forEach(b => {
+                        b.classList.remove('bg-blue-600', 'text-white');
+                        b.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+                    });
+                    e.target.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+                    e.target.classList.add('bg-blue-600', 'text-white');
+
+                    currentRegion = e.target.getAttribute('data-region');
+                    filterAndRender();
+                });
+            });
+
+            // Mobile sidebar drawer toggling
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            const toggleBtn = document.getElementById('sidebar-toggle');
+            const closeBtn = document.getElementById('sidebar-close');
+
+            function toggleSidebar(show) {
+                if (show) {
+                    sidebar.classList.remove('-translate-x-full');
+                    backdrop.classList.remove('hidden');
+                } else {
+                    sidebar.classList.add('-translate-x-full');
+                    backdrop.classList.add('hidden');
+                }
+            }
+
+            toggleBtn.addEventListener('click', () => toggleSidebar(true));
+            closeBtn.addEventListener('click', () => toggleSidebar(false));
+            backdrop.addEventListener('click', () => toggleSidebar(false));
+        }
+    </script>
+</body>
+</html>
